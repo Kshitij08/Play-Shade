@@ -197,7 +197,7 @@ export const MultiplayerPartyScreen = () => {
     } else {
       setTimeLeft(null);
     }
-  }, [gameInfo?.gameState, gameInfo?.guessTime, currentRoom, submitScore]);
+  }, [gameInfo?.gameState, gameInfo?.guessTime, gameInfo?.currentGuessTime, currentRoom, submitScore]);
 
   const handleCreateRoom = () => {
     if (playerName.trim()) {

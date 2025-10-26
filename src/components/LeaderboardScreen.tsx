@@ -309,6 +309,59 @@ export const LeaderboardScreen = () => {
         LEADERBOARD
       </h1>
 
+      {/* Prize Pool Section */}
+      <div className="mx-4 mb-6">
+        <div className="bg-gradient-to-r from-[#FFE254] to-[#FFD700] border-2 border-black rounded-[12px] shadow-[0px_4px_0px_0px_rgba(0,0,0,1)] p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-white border border-black rounded-full flex items-center justify-center">
+                <Coins className="w-5 h-5 text-[#F6881D]" />
+              </div>
+              <div>
+                <p className="font-hartone text-[14px] text-black uppercase tracking-wide">
+                  PRIZE POOL
+                </p>
+                <p className="font-sintony text-[12px] text-black/70">
+                  Weekly Rewards
+                </p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="font-hartone text-[18px] text-black font-bold">
+                $50
+              </p>
+              <p className="font-sintony text-[12px] text-black/70">
+                worth of $SHADES
+              </p>
+            </div>
+          </div>
+          
+          {/* Reward Distribution */}
+          <div className="mt-3 pt-3 border-t border-black/20">
+            <div className="flex justify-between items-center text-[11px] font-sintony">
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 bg-[#FFD700] border border-black rounded-full flex items-center justify-center">
+                  <span className="text-[8px] font-bold text-black">1</span>
+                </div>
+                <span className="text-black">1st: $25</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 bg-[#C0C0C0] border border-black rounded-full flex items-center justify-center">
+                  <span className="text-[8px] font-bold text-black">2</span>
+                </div>
+                <span className="text-black">2nd: $15</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 bg-[#CD7F32] border border-black rounded-full flex items-center justify-center">
+                  <span className="text-[8px] font-bold text-black">3</span>
+                </div>
+                <span className="text-black">3rd: $10</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Tab Navigation */}
       <div className="w-full border-b border-[#DEDEC9]">
         <div className="flex">

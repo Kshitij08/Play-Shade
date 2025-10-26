@@ -9,6 +9,9 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Rank1, Rank2, Rank3 } from "../icons";
+import { Share2 } from "lucide-react";
+import { useComposeCast } from "@coinbase/onchainkit/minikit";
+import { generatePartyShareUrl, type PartyShareData } from "@/lib/farcaster-share";
 
 interface SessionFinishedScreenProps {
   gameInfo: any;
@@ -58,9 +61,58 @@ export const SessionFinishedScreen = ({
   showFinalLeaderboard,
   setShowFinalLeaderboard,
 }: SessionFinishedScreenProps) => {
+  const { composeCast } = useComposeCast();
+  
   const winner = gameInfo.players?.reduce((prev: any, current: any) =>
-    (prev.score || 0) > (current.score || 0) ? prev : current,
+    (prev.sessionScore || 0) > (current.sessionScore || 0) ? prev : current,
   );
+
+  const handleShare = async () => {
+    try {
+      // Sort players by session score for leaderboard
+      const sortedPlayers = [...(gameInfo.players || [])].sort(
+        (a, b) => (b.sessionScore || 0) - (a.sessionScore || 0)
+      );
+
+      const partyData: PartyShareData = {
+        roomId: gameInfo.roomId,
+        hostName: gameInfo.dennerName,
+        playerNames: sortedPlayers.map(p => p.name),
+        playerScores: sortedPlayers.map(p => p.sessionScore || 0),
+        totalRounds: gameInfo.maxRounds,
+        gameTypes: [], // Could be enhanced to track game types per round
+        winnerName: winner?.name || "Unknown",
+        winnerScore: winner?.sessionScore || 0,
+        date: new Date().toLocaleDateString("en-US", {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+          timeZone: "UTC",
+        }),
+      };
+
+      const shareUrl = generatePartyShareUrl(partyData);
+      
+      // Create cast text with player mentions
+      const playerMentions = sortedPlayers
+        .slice(0, 5) // Limit to first 5 players to avoid text length issues
+        .map(p => `@${p.name}`)
+        .join(" ");
+
+      const castText = `🎉 Epic party game complete! ${winner?.name} won with ${(winner?.sessionScore || 0).toFixed(1)}% average! 🏆\n\n${playerMentions}\n\nThink you can do better? 🎨`;
+
+      composeCast({
+        text: castText,
+        embeds: [shareUrl],
+      });
+    } catch (error) {
+      console.error("Error sharing party results:", error);
+      // Fallback cast without URL
+      composeCast({
+        text: `🎉 Just finished an epic party game! ${winner?.name} won with ${(winner?.sessionScore || 0).toFixed(1)}% average! 🏆 Join the fun at @playshadedotfun! 🎨`,
+      });
+    }
+  };
 
   return (
     <div className="w-full">
@@ -78,17 +130,25 @@ export const SessionFinishedScreen = ({
               {winner.name} Wins!
             </h3>
             <p className="font-sintony text-[16px] text-black">
-              Final Score: {winner.score || 0} points
+              Final Score: {(winner.sessionScore || 0).toFixed(1)}% average
             </p>
           </div>
         )}
 
-        <div className="text-center mb-6">
+        <div className="text-center mb-6 space-y-3">
           <Button
             onClick={() => setShowFinalLeaderboard(true)}
-            className="bg-[#FFE254] text-black border border-black hover:bg-yellow-300 font-hartone text-[18px] shadow-[0px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[0px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] active:shadow-none active:translate-y-[4px]"
+            className="bg-[#FFE254] text-black border border-black hover:bg-yellow-300 font-hartone text-[18px] shadow-[0px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[0px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] active:shadow-none active:translate-y-[4px] w-full"
           >
             Final Leaderboard
+          </Button>
+          
+          <Button
+            onClick={handleShare}
+            className="bg-[#4CAF50] text-white border border-black hover:bg-green-600 font-hartone text-[18px] shadow-[0px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[0px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] active:shadow-none active:translate-y-[4px] w-full flex items-center justify-center gap-2"
+          >
+            <Share2 className="w-5 h-5" />
+            Share Results
           </Button>
         </div>
 
@@ -123,7 +183,7 @@ export const SessionFinishedScreen = ({
 
           <div className="space-y-3">
             {gameInfo.players
-              ?.sort((a: any, b: any) => (b.score || 0) - (a.score || 0))
+              ?.sort((a: any, b: any) => (b.sessionScore || 0) - (a.sessionScore || 0))
               .map((player: any, index: number) => (
                 <div
                   key={player.id}
@@ -138,7 +198,7 @@ export const SessionFinishedScreen = ({
                     </span>
                   </div>
                   <span className="font-hartone text-[18px] text-black pr-3">
-                    {player.score || 0} pts
+                    {(player.sessionScore || 0).toFixed(1)}%
                   </span>
                 </div>
               ))}

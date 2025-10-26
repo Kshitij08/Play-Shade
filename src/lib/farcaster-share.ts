@@ -15,6 +15,18 @@ export interface LeaderboardShareData {
   date?: string;
 }
 
+export interface PartyShareData {
+  roomId: string;
+  hostName: string;
+  playerNames: string[];
+  playerScores: number[];
+  totalRounds: number;
+  gameTypes: string[];
+  winnerName: string;
+  winnerScore: number;
+  date?: string;
+}
+
 // Database entry from leaderboard table
 export interface LeaderboardEntry {
   userId: string;
@@ -205,4 +217,99 @@ export function parseShareParams(
   if (!encoded) return null;
 
   return decodeShareData(encoded);
+}
+
+// Party mode share functions
+function encodePartyData(data: PartyShareData): string {
+  try {
+    // Encode room ID
+    const roomId = data.roomId;
+    
+    // Encode host name
+    const hostName = btoa(data.hostName).replace(/[=+/]/g, "");
+    
+    // Encode player names (limit to first 6 players to avoid URL length issues)
+    const limitedPlayerNames = data.playerNames.slice(0, 6);
+    const playerNames = limitedPlayerNames.map(name => 
+      btoa(name.substring(0, 15)).replace(/[=+/]/g, "") // Limit name length
+    ).join(",");
+    
+    // Encode scores (corresponding to limited players)
+    const playerScores = data.playerScores.slice(0, 6).map(score => 
+      Math.round(score * 100).toString(36) // Convert to base36, multiply by 100 to preserve 2 decimals
+    ).join(",");
+    
+    // Encode other data
+    const totalRounds = data.totalRounds.toString(36);
+    const winnerName = btoa(data.winnerName.substring(0, 15)).replace(/[=+/]/g, "");
+    const winnerScore = Math.round(data.winnerScore * 100).toString(36);
+    
+    // Pack into compact string: roomId|hostName|playerNames|playerScores|totalRounds|winnerName|winnerScore
+    return `${roomId}|${hostName}|${playerNames}|${playerScores}|${totalRounds}|${winnerName}|${winnerScore}`;
+  } catch (error) {
+    console.error("Failed to encode party data:", error);
+    return "";
+  }
+}
+
+function decodePartyData(encoded: string): PartyShareData | null {
+  try {
+    const parts = encoded.split("|");
+    if (parts.length < 7) return null;
+    
+    const [roomId, hostName, playerNames, playerScores, totalRounds, winnerName, winnerScore] = parts;
+    
+    // Decode host name
+    const paddedHostName = hostName + "=".repeat((4 - (hostName.length % 4)) % 4);
+    const decodedHostName = atob(paddedHostName);
+    
+    // Decode player names
+    const decodedPlayerNames = playerNames.split(",").map(name => {
+      const paddedName = name + "=".repeat((4 - (name.length % 4)) % 4);
+      return atob(paddedName);
+    });
+    
+    // Decode player scores
+    const decodedPlayerScores = playerScores.split(",").map(score => 
+      parseInt(score, 36) / 100 // Convert back from base36 and divide by 100
+    );
+    
+    // Decode winner name
+    const paddedWinnerName = winnerName + "=".repeat((4 - (winnerName.length % 4)) % 4);
+    const decodedWinnerName = atob(paddedWinnerName);
+    
+    return {
+      roomId,
+      hostName: decodedHostName,
+      playerNames: decodedPlayerNames,
+      playerScores: decodedPlayerScores,
+      totalRounds: parseInt(totalRounds, 36),
+      gameTypes: [], // Not encoded to save space
+      winnerName: decodedWinnerName,
+      winnerScore: parseInt(winnerScore, 36) / 100,
+    };
+  } catch (error) {
+    console.error("Failed to decode party data:", error);
+    return null;
+  }
+}
+
+export function generatePartyShareUrl(data: PartyShareData): string {
+  const baseUrl =
+    process.env.NEXT_PUBLIC_URL ||
+    (typeof window !== "undefined" ? window.location.origin : "");
+  
+  const encoded = encodePartyData(data);
+  const shareUrl = `${baseUrl}/party-share?d=${encoded}`;
+  
+  return shareUrl;
+}
+
+export function parsePartyShareParams(
+  searchParams: URLSearchParams,
+): PartyShareData | null {
+  const encoded = searchParams.get("d");
+  if (!encoded) return null;
+
+  return decodePartyData(encoded);
 }

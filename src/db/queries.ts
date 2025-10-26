@@ -3,11 +3,23 @@ import {
   dailyAttempts,
   leaderboard,
   notificationDetails,
+  partyRooms,
+  partyPlayers,
+  partyRounds,
+  partyScores,
   type NewDailyAttempt,
   type NewLeaderboardEntry,
   type NewNotificationDetails,
+  type NewPartyRoom,
+  type NewPartyPlayer,
+  type NewPartyRound,
+  type NewPartyScore,
+  type PartyRoom,
+  type PartyPlayer,
+  type PartyRound,
+  type PartyScore,
 } from "./schema";
-import { eq, desc, and, sql, asc, gt, lt, or } from "drizzle-orm";
+import { eq, desc, and, sql, asc, gt, lt, or, inArray } from "drizzle-orm";
 import type { MiniAppNotificationDetails } from "@farcaster/miniapp-sdk";
 
 export async function saveDailyAttempt(
@@ -363,4 +375,320 @@ export async function getAllNotificationTokens(): Promise<
     fid: row.fid,
     notificationDetails: row.notificationDetails as MiniAppNotificationDetails,
   }));
+}
+
+// ============================================================================
+// PARTY MODE DATABASE FUNCTIONS
+// ============================================================================
+
+// Room Management
+export async function createPartyRoom(roomData: {
+  roomId: string;
+  hostId: string;
+  hostName: string;
+  maxPlayers?: number;
+  maxRounds?: number;
+  guessTime?: number;
+}): Promise<PartyRoom> {
+  const newRoom: NewPartyRoom = {
+    roomId: roomData.roomId,
+    hostId: roomData.hostId,
+    hostName: roomData.hostName,
+    maxPlayers: roomData.maxPlayers || 4,
+    maxRounds: roomData.maxRounds || 3,
+    guessTime: roomData.guessTime || 30,
+    dennerRotation: [roomData.hostId], // Host starts as denner
+  };
+
+  const result = await db
+    .insert(partyRooms)
+    .values(newRoom)
+    .returning();
+
+  return result[0];
+}
+
+export async function getPartyRoom(roomId: string): Promise<PartyRoom | null> {
+  const result = await db
+    .select()
+    .from(partyRooms)
+    .where(and(eq(partyRooms.roomId, roomId), eq(partyRooms.isActive, true)))
+    .limit(1);
+
+  return result[0] || null;
+}
+
+export async function updatePartyRoom(
+  roomId: string,
+  updates: Partial<NewPartyRoom>
+): Promise<PartyRoom | null> {
+  const result = await db
+    .update(partyRooms)
+    .set({ ...updates, updatedAt: new Date() })
+    .where(eq(partyRooms.roomId, roomId))
+    .returning();
+
+  return result[0] || null;
+}
+
+export async function deactivatePartyRoom(roomId: string): Promise<void> {
+  await db
+    .update(partyRooms)
+    .set({ isActive: false, endTime: new Date(), updatedAt: new Date() })
+    .where(eq(partyRooms.roomId, roomId));
+}
+
+// Player Management
+export async function addPartyPlayer(playerData: {
+  roomId: string;
+  playerId: string;
+  playerName: string;
+}): Promise<PartyPlayer> {
+  const newPlayer: NewPartyPlayer = {
+    roomId: playerData.roomId,
+    playerId: playerData.playerId,
+    playerName: playerData.playerName,
+  };
+
+  const result = await db
+    .insert(partyPlayers)
+    .values(newPlayer)
+    .onConflictDoUpdate({
+      target: [partyPlayers.roomId, partyPlayers.playerId],
+      set: {
+        isActive: true,
+        lastSeen: new Date(),
+      },
+    })
+    .returning();
+
+  return result[0];
+}
+
+export async function getPartyPlayers(roomId: string): Promise<PartyPlayer[]> {
+  return await db
+    .select()
+    .from(partyPlayers)
+    .where(and(eq(partyPlayers.roomId, roomId), eq(partyPlayers.isActive, true)))
+    .orderBy(asc(partyPlayers.joinedAt));
+}
+
+export async function updatePartyPlayer(
+  roomId: string,
+  playerId: string,
+  updates: Partial<NewPartyPlayer>
+): Promise<PartyPlayer | null> {
+  const result = await db
+    .update(partyPlayers)
+    .set({ ...updates, lastSeen: new Date() })
+    .where(and(eq(partyPlayers.roomId, roomId), eq(partyPlayers.playerId, playerId)))
+    .returning();
+
+  return result[0] || null;
+}
+
+export async function removePartyPlayer(roomId: string, playerId: string): Promise<void> {
+  await db
+    .update(partyPlayers)
+    .set({ isActive: false, lastSeen: new Date() })
+    .where(and(eq(partyPlayers.roomId, roomId), eq(partyPlayers.playerId, playerId)));
+}
+
+// Round Management
+export async function createPartyRound(roundData: {
+  roomId: string;
+  roundNumber: number;
+  gameType: string;
+  dennerId: string;
+  dennerName: string;
+  targetColor: string;
+  guessTime: number;
+}): Promise<PartyRound> {
+  const newRound: NewPartyRound = {
+    roomId: roundData.roomId,
+    roundNumber: roundData.roundNumber,
+    gameType: roundData.gameType,
+    dennerId: roundData.dennerId,
+    dennerName: roundData.dennerName,
+    targetColor: roundData.targetColor,
+    guessTime: roundData.guessTime,
+    startTime: new Date(),
+  };
+
+  const result = await db
+    .insert(partyRounds)
+    .values(newRound)
+    .returning();
+
+  return result[0];
+}
+
+export async function getPartyRound(roomId: string, roundNumber: number): Promise<PartyRound | null> {
+  const result = await db
+    .select()
+    .from(partyRounds)
+    .where(and(eq(partyRounds.roomId, roomId), eq(partyRounds.roundNumber, roundNumber)))
+    .limit(1);
+
+  return result[0] || null;
+}
+
+export async function completePartyRound(
+  roomId: string,
+  roundNumber: number,
+  playerResults: any[]
+): Promise<PartyRound | null> {
+  const result = await db
+    .update(partyRounds)
+    .set({
+      isCompleted: true,
+      endTime: new Date(),
+      playerResults: playerResults,
+    })
+    .where(and(eq(partyRounds.roomId, roomId), eq(partyRounds.roundNumber, roundNumber)))
+    .returning();
+
+  return result[0] || null;
+}
+
+export async function getPartyRounds(roomId: string): Promise<PartyRound[]> {
+  return await db
+    .select()
+    .from(partyRounds)
+    .where(eq(partyRounds.roomId, roomId))
+    .orderBy(asc(partyRounds.roundNumber));
+}
+
+// Score Management
+export async function savePartyScore(scoreData: {
+  roomId: string;
+  roundId: number;
+  playerId: string;
+  playerName: string;
+  score: number;
+  timeTaken: number;
+  targetColor: string;
+  capturedColor?: string;
+  similarity?: number;
+  gameType: string;
+}): Promise<PartyScore> {
+  const newScore: NewPartyScore = {
+    roomId: scoreData.roomId,
+    roundId: scoreData.roundId,
+    playerId: scoreData.playerId,
+    playerName: scoreData.playerName,
+    score: scoreData.score,
+    timeTaken: scoreData.timeTaken.toString(),
+    targetColor: scoreData.targetColor,
+    capturedColor: scoreData.capturedColor,
+    similarity: scoreData.similarity?.toString(),
+    gameType: scoreData.gameType,
+  };
+
+  const result = await db
+    .insert(partyScores)
+    .values(newScore)
+    .onConflictDoUpdate({
+      target: [partyScores.roundId, partyScores.playerId],
+      set: {
+        score: newScore.score,
+        timeTaken: newScore.timeTaken,
+        capturedColor: newScore.capturedColor,
+        similarity: newScore.similarity,
+        submittedAt: new Date(),
+      },
+    })
+    .returning();
+
+  return result[0];
+}
+
+export async function getPartyScores(roomId: string, roundId?: number): Promise<PartyScore[]> {
+  const whereConditions = [eq(partyScores.roomId, roomId)];
+  
+  if (roundId) {
+    whereConditions.push(eq(partyScores.roundId, roundId));
+  }
+
+  return await db
+    .select()
+    .from(partyScores)
+    .where(and(...whereConditions))
+    .orderBy(desc(partyScores.score), asc(partyScores.timeTaken));
+}
+
+export async function getPartyLeaderboard(roomId: string): Promise<Array<{
+  playerId: string;
+  playerName: string;
+  sessionScore: number;
+  roundScores: number[];
+  totalScore: number;
+  averageScore: number;
+}>> {
+  // Get all scores for the room
+  const scores = await db
+    .select()
+    .from(partyScores)
+    .where(eq(partyScores.roomId, roomId))
+    .orderBy(asc(partyScores.roundId));
+
+  // Group scores by player
+  const playerScores = scores.reduce((acc, score) => {
+    if (!acc[score.playerId]) {
+      acc[score.playerId] = {
+        playerId: score.playerId,
+        playerName: score.playerName,
+        scores: [],
+      };
+    }
+    acc[score.playerId].scores.push(score.score);
+    return acc;
+  }, {} as Record<string, { playerId: string; playerName: string; scores: number[] }>);
+
+  // Calculate leaderboard
+  return Object.values(playerScores)
+    .map(player => {
+      const totalScore = player.scores.reduce((sum, score) => sum + score, 0);
+      const averageScore = player.scores.length > 0 ? totalScore / player.scores.length : 0;
+      return {
+        playerId: player.playerId,
+        playerName: player.playerName,
+        sessionScore: Math.round(averageScore * 100) / 100, // Use average as session score, rounded to 2 decimals
+        roundScores: player.scores,
+        totalScore: totalScore, // Keep total for reference
+        averageScore: Math.round(averageScore * 100) / 100, // Round to 2 decimal places
+      };
+    })
+    .sort((a, b) => b.averageScore - a.averageScore); // Sort by average score instead of total
+}
+
+// Cleanup functions
+export async function cleanupInactiveRooms(hoursOld: number = 24): Promise<number> {
+  const cutoffTime = new Date(Date.now() - hoursOld * 60 * 60 * 1000);
+  
+  const result = await db
+    .update(partyRooms)
+    .set({ isActive: false })
+    .where(and(
+      eq(partyRooms.isActive, true),
+      lt(partyRooms.updatedAt, cutoffTime)
+    ))
+    .returning({ id: partyRooms.id });
+
+  return result.length;
+}
+
+export async function cleanupInactivePlayers(hoursOld: number = 2): Promise<number> {
+  const cutoffTime = new Date(Date.now() - hoursOld * 60 * 60 * 1000);
+  
+  const result = await db
+    .update(partyPlayers)
+    .set({ isActive: false })
+    .where(and(
+      eq(partyPlayers.isActive, true),
+      lt(partyPlayers.lastSeen, cutoffTime)
+    ))
+    .returning({ id: partyPlayers.id });
+
+  return result.length;
 }

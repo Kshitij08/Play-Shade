@@ -42,7 +42,7 @@ export function useUserStreak() {
     };
 
     fetchStreak();
-  }, [userLoading]);
+  }, [userLoading, userId]);
 
   return { streak, isLoading, error };
 }
